@@ -6,7 +6,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-class ValidatePartnerIp
+class validarIp
 {
     private array $allowedIps = [
         '127.0.0.1',
