@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Log;
 
 class JuguetesController extends Controller
 {
-    private string $dulcesServiceUrl = '';
+    private string $dulcesServiceUrl = 'https://azariah-unbrittle-gwen.ngrok-free.dev';
 
     public function recibirDesdeMascota(Request $request)
     {
