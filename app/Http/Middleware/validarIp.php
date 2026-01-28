@@ -13,9 +13,9 @@ class validarIp
     ];
 
     private array $allowedDomains = [
+        'https://azariah-unbrittle-gwen.ngrok-free.dev',
         'ngrok.io',
         'ngrok-free.app',
-        'https://azariah-unbrittle-gwen.ngrok-free.dev'
     ];
 
     public function handle(Request $request, Closure $next): Response
