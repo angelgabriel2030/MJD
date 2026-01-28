@@ -10,7 +10,9 @@ use Illuminate\Support\Facades\Log;
 
 class JuguetesController extends Controller
 {
-    private string $dulcesServiceUrl = 'https://azariah-unbrittle-gwen.ngrok-free.dev';
+    private string $dulcesServiceUrl = 'https://azariah-unbrittle-gwen.ngrok-free.dev/api/dulces/desde-juguete';
+
+    private string $mascotaServiceUrl = '';
 
     public function recibirDesdeMascota(Request $request)
     {
@@ -73,6 +75,7 @@ class JuguetesController extends Controller
         }
     }
 
+    
     public function recibirDesdeDulces(Request $request)
     {
         try {
@@ -96,10 +99,25 @@ class JuguetesController extends Controller
                 }
             }
 
+            $response = Http::timeout(30)->post($this->mascotaServiceUrl, [
+                'mascota' => $validated['mascota'],
+                'juguete' => $validated['juguete'],
+                'dulce' => $validated['dulce']
+            ]);
+
+            if ($response->successful()) {
+                return response()->json([
+                    'message' => 'Datos enviados de vuelta a Mascota exitosamente',
+                    'data' => $validated,
+                    'mascota_response' => $response->json()
+                ], 200);
+            }
+
             return response()->json([
-                'message' => 'Datos recibidos correctamente desde Dulces',
-                'data' => $validated
-            ], 200);
+                'message' => 'Datos recibidos pero error al comunicar con Mascota',
+                'data' => $validated,
+                'error' => $response->body()
+            ], 500);
 
         } catch (\Exception $e) {
             Log::error('Error en recibirDesdeDulces', ['error' => $e->getMessage()]);
@@ -111,7 +129,6 @@ class JuguetesController extends Controller
         }
     }
 
-    
     public function index()
     {
         $juguetes = Juguete::with('imagenes')
@@ -133,7 +150,6 @@ class JuguetesController extends Controller
         ], 200);
     }
 
-    
     public function listarImagenes()
     {
         $imagenes = Imagen::where('imageable_type', Juguete::class)
