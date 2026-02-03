@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\validarIp;
 use App\Http\Controllers\JuguetesController;
 use Illuminate\Support\Facades\Route;
 

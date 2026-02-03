@@ -16,7 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withMiddleware(function (Middleware $middleware) {
     $middleware->alias([
-        'validate.partner.ip' => \App\Http\Middleware\ValidatePartnerIp::class,
+        'validate.partner.ip' => \App\Http\Middleware\validarIp::class,
     ]);
 })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -14,6 +14,7 @@ class validarIp
 
     private array $allowedDomains = [
         'https://azariah-unbrittle-gwen.ngrok-free.dev',
+        'https://roni-promodernistic-depreciatingly.ngrok-free.dev',
         'ngrok.io',
         'ngrok-free.app',
     ];
