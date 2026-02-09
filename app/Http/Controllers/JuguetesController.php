@@ -10,9 +10,109 @@ use Illuminate\Support\Facades\Log;
 
 class JuguetesController extends Controller
 {
+
     private string $dulcesServiceUrl = 'https://azariah-unbrittle-gwen.ngrok-free.dev/api/dulces';
 
     private string $mascotaServiceUrl = '';
+
+    public function enviarSoloJuguete(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'juguete' => 'required|array',
+                'juguete.nombre' => 'required|string',
+                'juguete.tipo' => 'required|string',
+                'juguete.precio' => 'required|numeric',
+            ]);
+
+            $juguete = Juguete::create([
+                'nombre' => $validated['juguete']['nombre'],
+                'tipo' => $validated['juguete']['tipo'],
+                'precio' => $validated['juguete']['precio'],
+                'observaciones' => 'Enviado solo juguete a Dulces'
+            ]);
+
+            Log::info('Juguete guardado, enviando a Dulces', [
+                'juguete_id' => $juguete->id,
+                'url_destino' => $this->dulcesServiceUrl
+            ]);
+
+            $response = Http::timeout(30)->post($this->dulcesServiceUrl, [
+                'juguete' => [
+                    'id' => $juguete->id,
+                    'nombre' => $juguete->nombre,
+                    'tipo' => $juguete->tipo,
+                    'precio' => $juguete->precio,
+                ]
+            ]);
+
+            Log::info('Respuesta de Dulces', [
+                'status' => $response->status(),
+                'body' => $response->body()
+            ]);
+
+            if ($response->successful()) {
+                return response()->json([
+                    'message' => 'Juguete enviado a Dulces exitosamente',
+                    'juguete' => $juguete,
+                    'dulces_response' => $response->json()
+                ], 200);
+            }
+
+            return response()->json([
+                'message' => 'Juguete guardado pero error al comunicar con Dulces',
+                'juguete' => $juguete,
+                'error_detail' => $response->body(),
+                'status_code' => $response->status(),
+                'url_intentada' => $this->dulcesServiceUrl
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('Error en enviarSoloJuguete', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'error' => 'Error al procesar juguete',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function index()
+    {
+        $juguetes = Juguete::with('imagenes')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'juguetes' => $juguetes,
+            'total' => $juguetes->count()
+        ], 200);
+    }
+
+    public function show($id)
+    {
+        $juguete = Juguete::with('imagenes')->findOrFail($id);
+
+        return response()->json([
+            'juguete' => $juguete
+        ], 200);
+    }
+
+    public function listarImagenes()
+    {
+        $imagenes = Imagen::where('imageable_type', Juguete::class)
+            ->with('imageable')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'imagenes' => $imagenes,
+            'total' => $imagenes->count()
+        ], 200);
+    }
 
     public function recibirDesdeMascota(Request $request)
     {
@@ -20,11 +120,13 @@ class JuguetesController extends Controller
             $validated = $request->validate([
                 'mascota' => 'required|array',
                 'mascota.nombre' => 'required|string',
-                'mascota.id' => 'nullable|integer',
                 'juguete' => 'required|array',
                 'juguete.nombre' => 'required|string',
                 'juguete.tipo' => 'required|string',
                 'juguete.precio' => 'required|numeric',
+                'dulce' => 'required|array',
+                'dulce.nombre' => 'required|string',
+                'dulce.sabor' => 'required|string',
             ]);
 
             $juguete = Juguete::create([
@@ -39,106 +141,47 @@ class JuguetesController extends Controller
 
             Log::info('Juguete guardado desde Mascota', ['juguete_id' => $juguete->id]);
 
-            $dulceData = $this->generarDulceParaMascota($validated['mascota']);
 
-            $payload = [
-                'mascota' => [
-                    'id' => $validated['mascota']['id'] ?? null,
-                    'nombre' => $validated['mascota']['nombre'],
-                ],
-                'juguete' => [
-                    'id' => $juguete->id,
-                    'nombre' => $juguete->nombre,
-                    'tipo' => $juguete->tipo,
-                    'precio' => $juguete->precio,
-                ],
-                'dulce' => $dulceData
-            ];
+            $dulcesToken = env('DULCES_TOKEN');
 
-            Log::info('Enviando a Dulces', ['payload' => $payload]);
 
-            $response = Http::timeout(30)
-                ->withHeaders([
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json',
-                ])
-                ->post($this->dulcesServiceUrl, $payload);
-
-            if ($response->successful()) {
-                $responseData = $response->json();
-                
-                $juguete->update([
-                    'dulce_nombre' => $responseData['dulce']['nombre'] ?? null,
-                    'observaciones' => 'Completado - Dulce asignado'
+            $response = Http::withToken($dulcesToken)
+            ->timeout(30)
+                ->post($this->dulcesServiceUrl, [
+                    'mascota' => $validated['mascota'],
+                    'juguete' => [
+                        'id' => $juguete->id,
+                        'nombre' => $juguete->nombre,
+                        'tipo' => $juguete->tipo,
+                        'precio' => $juguete->precio,
+                    ],
+                    'dulce' => $validated['dulce']
                 ]);
 
+            if ($response->successful()) {
+                $juguete->update(['dulce_nombre' => $response->json()['dulce']['nombre'] ?? null]);
+
                 return response()->json([
-                    'success' => true,
                     'message' => 'Juguete procesado y enviado a Dulces exitosamente',
                     'juguete' => $juguete->load('imagenes'),
-                    'dulces_response' => $responseData
+                    'dulces_response' => $response->json()
                 ], 200);
             }
 
-            Log::error('Error al comunicar con Dulces', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-                'payload_sent' => $payload
-            ]);
-
             return response()->json([
-                'success' => false,
                 'message' => 'Juguete guardado pero error al comunicar con Dulces',
                 'juguete' => $juguete->load('imagenes'),
-                'error' => $response->body(),
-                'status_code' => $response->status()
+                'error' => $response->body()
             ], 500);
 
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::error('Error de validación en Juguetes', [
-                'errors' => $e->errors(),
-                'request' => $request->all()
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Error de validación',
-                'errors' => $e->errors()
-            ], 422);
-
         } catch (\Exception $e) {
-            Log::error('Error en recibirDesdeMascota', [
-                'error' => $e->getMessage(),
-                'line' => $e->getLine(),
-                'trace' => $e->getTraceAsString()
-            ]);
+            Log::error('Error en recibirDesdeMascota', ['error' => $e->getMessage()]);
 
             return response()->json([
-                'success' => false,
                 'error' => 'Error al procesar juguete',
                 'message' => $e->getMessage()
             ], 500);
         }
-    }
-
-    private function generarDulceParaMascota(array $mascota): array
-    {
-        $nombreMascota = strtolower($mascota['nombre'] ?? 'desconocido');
-                $dulces = [
-            'perro' => ['nombre' => 'Hueso de caramelo', 'sabor' => 'pollo'],
-            'gato' => ['nombre' => 'Gomita de atún', 'sabor' => 'pescado'],
-            'conejo' => ['nombre' => 'Zanahoria dulce', 'sabor' => 'zanahoria'],
-            'hamster' => ['nombre' => 'Bolita de miel', 'sabor' => 'miel'],
-            'default' => ['nombre' => 'Galleta especial', 'sabor' => 'vainilla']
-        ];
-
-        foreach ($dulces as $tipo => $dulce) {
-            if ($tipo !== 'default' && str_contains($nombreMascota, $tipo)) {
-                return $dulce;
-            }
-        }
-
-        return $dulces['default'];
     }
 
     public function recibirDesdeDulces(Request $request)
@@ -164,82 +207,34 @@ class JuguetesController extends Controller
                 }
             }
 
-            if (!empty($this->mascotaServiceUrl)) {
-                $response = Http::timeout(30)->post($this->mascotaServiceUrl, [
-                    'mascota' => $validated['mascota'],
-                    'juguete' => $validated['juguete'],
-                    'dulce' => $validated['dulce']
-                ]);
+            $response = Http::timeout(30)->post($this->mascotaServiceUrl, [
+                'mascota' => $validated['mascota'],
+                'juguete' => $validated['juguete'],
+                'dulce' => $validated['dulce']
+            ]);
 
-                if ($response->successful()) {
-                    return response()->json([
-                        'success' => true,
-                        'message' => 'Datos enviados de vuelta a Mascota exitosamente',
-                        'data' => $validated,
-                        'mascota_response' => $response->json()
-                    ], 200);
-                }
-
+            if ($response->successful()) {
                 return response()->json([
-                    'success' => false,
-                    'message' => 'Datos recibidos pero error al comunicar con Mascota',
+                    'message' => 'Datos enviados de vuelta a Mascota exitosamente',
                     'data' => $validated,
-                    'error' => $response->body()
-                ], 500);
+                    'mascota_response' => $response->json()
+                ], 200);
             }
 
             return response()->json([
-                'success' => true,
-                'message' => 'Datos procesados exitosamente',
-                'data' => $validated
-            ], 200);
+                'message' => 'Datos recibidos pero error al comunicar con Mascota',
+                'data' => $validated,
+                'error' => $response->body()
+            ], 500);
 
         } catch (\Exception $e) {
             Log::error('Error en recibirDesdeDulces', ['error' => $e->getMessage()]);
 
             return response()->json([
-                'success' => false,
                 'error' => 'Error al procesar respuesta de Dulces',
                 'message' => $e->getMessage()
             ], 500);
         }
-    }
-
-    public function index()
-    {
-        $juguetes = Juguete::with('imagenes')
-            ->orderBy('created_at', 'desc')
-            ->get();
-
-        return response()->json([
-            'success' => true,
-            'juguetes' => $juguetes,
-            'total' => $juguetes->count()
-        ], 200);
-    }
-
-    public function show($id)
-    {
-        $juguete = Juguete::with('imagenes')->findOrFail($id);
-
-        return response()->json([
-            'success' => true,
-            'juguete' => $juguete
-        ], 200);
-    }
-
-    public function listarImagenes()
-    {
-        $imagenes = Imagen::where('imageable_type', Juguete::class)
-            ->with('imageable')
-            ->orderBy('created_at', 'desc')
-            ->get();
-
-        return response()->json([
-            'success' => true,
-            'imagenes' => $imagenes,
-            'total' => $imagenes->count()
-        ], 200);
     }
 
     private function guardarImagen(Request $request, Juguete $juguete, string $origen)
