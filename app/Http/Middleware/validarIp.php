@@ -10,13 +10,13 @@ class validarIp
 {
     private array $allowedIps = [
         '127.0.0.1',
+        'https://azariah-unbrittle-gwen.ngrok-free.dev',
+        'https://roni-promodernistic-depreciatingly.ngrok-free.dev'
     ];
 
     private array $allowedDomains = [
         'https://azariah-unbrittle-gwen.ngrok-free.dev',
-        'https://roni-promodernistic-depreciatingly.ngrok-free.dev',
-        'ngrok.io',
-        'ngrok-free.app',
+        'https://roni-promodernistic-depreciatingly.ngrok-free.dev'
     ];
 
     public function handle(Request $request, Closure $next): Response
